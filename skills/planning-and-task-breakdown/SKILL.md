@@ -1,223 +1,142 @@
 ---
 name: planning-and-task-breakdown
-description: Breaks work into ordered tasks. Use when you have a spec or clear requirements and need to break work into implementable tasks. Use when a task feels too large to start, when you need to estimate scope, or when parallel work is possible.
+description: Breaks a Linear project into ordered parent issues (vertical slices), then breaks one slice at a time into sub-issues with blocking relations. Use when you have a Linear project describing work and need to decompose it into implementable, dependency-ordered Linear issues. Use when a slice feels too large to start, or when parallel work is possible.
 ---
 
 # Planning and Task Breakdown
 
 ## Overview
 
-Decompose work into small, verifiable tasks with explicit acceptance criteria. Good task breakdown is the difference between an agent that completes work reliably and one that produces a tangled mess. Every task should be small enough to implement, test, and verify in a single focused session.
+Decompose a Linear **project** into small, verifiable Linear **issues**:
+first into vertical-slice parent issues, then each slice into sub-issues —
+wired together with blocking relations that encode dependency order. The input
+is a Linear project; the output is Linear issues, not a markdown document.
+
+The work splits into two modes, run in **separate sessions** so neither blows
+its context budget. This skill routes to the right mode by reading status, then
+loads only that mode's instructions:
+
+- **Break the project into vertical slices** → reference/project.md
+- **Decompose one slice into sub-issues** → reference/issues.md
+
+The status script tells you which mode you're in without pulling issue bodies
+into context. One run does one unit of work — create the slices, or decompose
+one slice — then stops. The user drives the next session.
 
 ## When to Use
 
-- You have a spec and need to break it into implementable units
-- A task feels too large or vague to start
-- Work needs to be parallelized across multiple agents or sessions
-- You need to communicate scope to a human
-- The implementation order isn't obvious
+- You have a Linear project and need to break it into implementable issues.
+- A slice feels too large or vague to start.
+- Work needs to be parallelized; dependency order should be explicit.
 
-**When NOT to use:** Single-file changes with obvious scope, or when the spec already contains well-defined tasks.
+**When NOT to use:** a single issue with obvious scope, or a project already
+fully decomposed and correctly ordered.
 
-## The Planning Process
+## Principles that hold across both modes
 
-### Step 1: Enter Plan Mode
+These are the rules both reference files assume — read them as the spine.
 
-Before writing any code, operate in read-only mode:
+- **You read everything yourself.** The project description, every artifact it
+  links to, the relevant code. Do not delegate reading to a subagent and do not
+  work from a summary. The reading is the highest-leverage part of this; full,
+  first-hand information is the point. (This is why one run does one unit — so
+  the context holds real detail, not a thin survey of the whole tree.)
+- **Vertical slices, not horizontal layers.** A slice is one complete, testable
+  path — schema + API + UI for a single capability — not "all the schema" then
+  "all the API." Each slice delivers working functionality on its own.
+- **Dependency order lives in blocking relations.** Parent/sub-issue is grouping;
+  ordering is blockers. `blockedBy`/`blocks` are append-only — correct mistakes
+  with the remove fields, never a re-save. No cycles, ever.
+- **One level of nesting.** Project → parent (slice) → sub-issue. No deeper.
+- **The skill owns status transitions, and confirms them.** Before moving a
+  project or parent to a new status, ask the user with AskUserQuestion. The
+  statuses are what route the next session, so they must be deliberate.
+- **You plan; you do not build.** Decomposition ends at status Todo. A
+  builder / brainstormer / verifier takes it from there.
 
-- Read the spec and relevant codebase sections
-- Identify existing patterns and conventions
-- Map dependencies between components
-- Note risks and unknowns
+## Routing
 
-**Do NOT write code during planning.** The output is a plan document, not implementation.
+Run the status script to get project + parent statuses as compact JSON, without
+reading issue bodies into context. It uses the Linear API directly (needs
+`LINEAR_API_KEY` in the environment):
 
-### Step 2: Identify the Dependency Graph
-
-Map what depends on what:
-
-```
-Database schema
-    │
-    ├── API models/types
-    │       │
-    │       ├── API endpoints
-    │       │       │
-    │       │       └── Frontend API client
-    │       │               │
-    │       │               └── UI components
-    │       │
-    │       └── Validation logic
-    │
-    └── Seed data / migrations
-```
-
-Implementation order follows the dependency graph bottom-up: build foundations first.
-
-### Step 3: Slice Vertically
-
-Instead of building all the database, then all the API, then all the UI — build one complete feature path at a time:
-
-**Bad (horizontal slicing):**
-```
-Task 1: Build entire database schema
-Task 2: Build all API endpoints
-Task 3: Build all UI components
-Task 4: Connect everything
+```bash
+bash scripts/status.sh project <project-id-or-slug>   # project + its parent issues
+bash scripts/status.sh issue   <issue-identifier>     # one issue + its blockers
 ```
 
-**Good (vertical slicing):**
-```
-Task 1: User can create an account (schema + API + UI for registration)
-Task 2: User can log in (auth schema + API + UI for login)
-Task 3: User can create a task (task schema + API + UI for creation)
-Task 4: User can view task list (query + API + UI for list view)
-```
+Then route:
 
-Each vertical slice delivers working, testable functionality.
+**If the user handed you an issue directly** (a link or identifier), ignore
+project status: re-evaluate that issue and decompose it further regardless of its
+status. Read **reference/issues.md** and treat that issue as the target.
 
-### Step 4: Write Tasks
+**Otherwise, branch on project status:**
 
-Each task follows this structure:
+| Project status | Mode | Read |
+|---|---|---|
+| **Backlog** | Create vertical slices as parent issues (resuming any partly-created set); flip project → Planning | reference/project.md |
+| **Planning** | Decompose the next slice (or finish a half-done one); when none remain, flip project → In Progress | reference/issues.md |
+| **anything else** | Decomposition assumed complete — stop | — |
 
-```markdown
-## Task [N]: [Short descriptive title]
+**Within Planning, branch on the target parent's status:**
 
-**Description:** One paragraph explaining what this task accomplishes.
+| Parent status | Meaning | Action |
+|---|---|---|
+| **Backlog** | Not decomposed | Decompose into sub-issues (reference/issues.md) |
+| **Refining** | Already decomposed, but the slice changed | Reconcile against the issue's evolution (reference/issues.md) |
+| **Todo / In Progress / Done / other** | Already handled | Skip — pick the next parent |
 
-**Acceptance criteria:**
-- [ ] [Specific, testable condition]
-- [ ] [Specific, testable condition]
-
-**Verification:**
-- [ ] Tests pass: `npm test -- --grep "feature-name"`
-- [ ] Build succeeds: `npm run build`
-- [ ] Manual check: [description of what to verify]
-
-**Dependencies:** [Task numbers this depends on, or "None"]
-
-**Files likely touched:**
-- `src/path/to/file.ts`
-- `tests/path/to/test.ts`
-
-**Estimated scope:** [Small: 1-2 files | Medium: 3-5 files | Large: 5+ files]
-```
-
-### Step 5: Order and Checkpoint
-
-Arrange tasks so that:
-
-1. Dependencies are satisfied (build foundation first)
-2. Each task leaves the system in a working state
-3. Verification checkpoints occur after every 2-3 tasks
-4. High-risk tasks are early (fail fast)
-
-Add explicit checkpoints:
-
-```markdown
-## Checkpoint: After Tasks 1-3
-- [ ] All tests pass
-- [ ] Application builds without errors
-- [ ] Core user flow works end-to-end
-- [ ] Review with human before proceeding
-```
+Load **only** the reference file for the mode you routed into. Don't read both.
 
 ## Task Sizing Guidelines
+
+Applies when breaking a slice into sub-issues (reference/issues.md).
 
 | Size | Files | Scope | Example |
 |------|-------|-------|---------|
 | **XS** | 1 | Single function or config change | Add a validation rule |
 | **S** | 1-2 | One component or endpoint | Add a new API endpoint |
 | **M** | 3-5 | One feature slice | User registration flow |
-| **L** | 5-8 | Multi-component feature | Search with filtering and pagination |
+| **L** | 5-8 | Multi-component feature | Search with filtering + pagination |
 | **XL** | 8+ | **Too large — break it down further** | — |
 
-If a task is L or larger, it should be broken into smaller tasks. An agent performs best on S and M tasks.
+An agent performs best on S and M sub-issues. If a unit is L or larger, split it.
 
-**When to break a task down further:**
-- It would take more than one focused session (roughly 2+ hours of agent work)
-- You cannot describe the acceptance criteria in 3 or fewer bullet points
-- It touches two or more independent subsystems (e.g., auth and billing)
-- You find yourself writing "and" in the task title (a sign it is two tasks)
-
-## Plan Document Template
-
-```markdown
-# Implementation Plan: [Feature/Project Name]
-
-## Overview
-[One paragraph summary of what we're building]
-
-## Architecture Decisions
-- [Key decision 1 and rationale]
-- [Key decision 2 and rationale]
-
-## Task List
-
-### Phase 1: Foundation
-- [ ] Task 1: ...
-- [ ] Task 2: ...
-
-### Checkpoint: Foundation
-- [ ] Tests pass, builds clean
-
-### Phase 2: Core Features
-- [ ] Task 3: ...
-- [ ] Task 4: ...
-
-### Checkpoint: Core Features
-- [ ] End-to-end flow works
-
-### Phase 3: Polish
-- [ ] Task 5: ...
-- [ ] Task 6: ...
-
-### Checkpoint: Complete
-- [ ] All acceptance criteria met
-- [ ] Ready for review
-
-## Risks and Mitigations
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| [Risk] | [High/Med/Low] | [Strategy] |
-
-## Open Questions
-- [Question needing human input]
-```
-
-## Parallelization Opportunities
-
-When multiple agents or sessions are available:
-
-- **Safe to parallelize:** Independent feature slices, tests for already-implemented features, documentation
-- **Must be sequential:** Database migrations, shared state changes, dependency chains
-- **Needs coordination:** Features that share an API contract (define the contract first, then parallelize)
+**Break a sub-issue down further when:**
+- It would take more than one focused session (~2+ hours of agent work).
+- You can't state acceptance criteria in 3 or fewer bullets.
+- It touches two or more independent subsystems.
+- The title wants an "and" (a sign it's two issues).
 
 ## Common Rationalizations
 
 | Rationalization | Reality |
 |---|---|
-| "I'll figure it out as I go" | That's how you end up with a tangled mess and rework. 10 minutes of planning saves hours. |
-| "The tasks are obvious" | Write them down anyway. Explicit tasks surface hidden dependencies and forgotten edge cases. |
-| "Planning is overhead" | Planning is the task. Implementation without a plan is just typing. |
-| "I can hold it all in my head" | Context windows are finite. Written plans survive session boundaries and compaction. |
+| "I'll figure it out as I go" | That's how you get a tangled mess and rework. Planning is the task. |
+| "I'll let a subagent read it and summarize" | Reading is the leverage. Summaries drop the detail the breakdown depends on. |
+| "The slices are obvious" | Write them down anyway — explicit slices surface hidden dependencies. |
+| "I'll set the blockers later" | Later never comes, and the build loop can't order work without them. |
+| "Parent/sub-issue is enough structure" | That's grouping, not ordering. Order lives in blocking relations. |
+| "I'll do all the slices in one session" | Context can't hold the whole tree at fidelity. One unit per run. |
 
 ## Red Flags
 
-- Starting implementation without a written task list
-- Tasks that say "implement the feature" without acceptance criteria
-- No verification steps in the plan
-- All tasks are XL-sized
-- No checkpoints between tasks
-- Dependency order isn't considered
+- Reading the project through a subagent summary instead of first-hand.
+- Decomposing more than one slice in a single session.
+- Horizontal slices ("all the schema") instead of vertical ones.
+- Dependency order left unencoded — no blocking relations.
+- Blocking relations that form a cycle.
+- Nesting deeper than parent → sub-issue.
+- Flipping a project or parent status without asking the user first.
 
 ## Verification
 
-Before starting implementation, confirm:
+Before a run hands off, confirm (the active reference file has the mode-specific
+list):
 
-- [ ] Every task has acceptance criteria
-- [ ] Every task has a verification step
-- [ ] Task dependencies are identified and ordered correctly
-- [ ] No task touches more than ~5 files
-- [ ] Checkpoints exist between major phases
-- [ ] The human has reviewed and approved the plan
+- [ ] Everything was read first-hand, not summarized.
+- [ ] Issues live in the correct Linear project.
+- [ ] Dependency order is encoded as blocking relations, no cycles.
+- [ ] Nesting is one level deep.
+- [ ] The relevant status transition was confirmed with the user.
